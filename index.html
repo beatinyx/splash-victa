@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Splash Victa · prévia</title>
+<style>
+  :root { --bg: #f3f4f1; --ink: #132b1b; --muted: #5d6660; --line: #d9ddd6; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 32px 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p { margin: 0 0 24px; color: var(--muted); }
+  .phones { display: flex; gap: 40px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+  figure { margin: 0; text-align: center; }
+  figcaption { margin-top: 10px; color: var(--muted); font-size: 12px; }
+  .phone { border-radius: 44px; overflow: hidden; box-shadow: 0 0 0 10px #111, 0 20px 50px rgba(0,0,0,.25); line-height: 0; }
+  .phone.android { border-radius: 28px; }
+  .lottie { background: #42CF00; border-radius: 12px; outline: 1px dashed #00512A55; line-height: 0; }
+  .controls { display: flex; gap: 12px; align-items: center; justify-content: center; margin-top: 36px; flex-wrap: wrap; }
+  button, select { font: inherit; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
+  input[type=range] { width: min(420px, 90vw); }
+  .time { font-variant-numeric: tabular-nums; min-width: 150px; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Splash Victa</h1>
+  <p>2,8 s · contorno → preenchimento → logotipo. O frame 0 é igual à splash nativa (só o fundo verde).</p>
+  <div class="phones">
+    <figure><div class="phone" id="ios"></div><figcaption>iOS · 393 × 852 pt</figcaption></figure>
+    <figure><div class="phone android" id="android"></div><figcaption>Android · 412 × 917 dp</figcaption></figure>
+    <figure><div class="lottie" id="lottie"></div><figcaption>Lottie · dist/victa-splash.json (400 × 400)</figcaption></figure>
+  </div>
+  <div class="controls">
+    <button id="play">Pausar</button>
+    <button id="replay">Repetir</button>
+    <select id="speed"><option value="1">1×</option><option value="0.5">0,5×</option><option value="0.25">0,25×</option></select>
+    <input id="scrub" type="range" min="0" step="1" value="0">
+    <span class="time" id="time"></span>
+  </div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+<script src="src/timeline.js"></script>
+<script>
+  const S = window.VictaSplash;
+  const PREVIEW_SCALE = 0.62;
+  const devices = [
+    { el: document.getElementById('ios'), W: 393, H: 852 },
+    { el: document.getElementById('android'), W: 412, H: 917 },
+  ];
+  devices.forEach(d => { d.el.style.width = d.W * PREVIEW_SCALE + 'px'; d.el.style.height = d.H * PREVIEW_SCALE + 'px'; });
+
+  const lottieEl = document.getElementById('lottie');
+  lottieEl.style.width = lottieEl.style.height = S.STAGE * PREVIEW_SCALE + 'px';
+  const anim = window.lottie.loadAnimation({ container: lottieEl, renderer: 'svg', loop: false, autoplay: false, path: 'dist/victa-splash.json' });
+
+  const scrub = document.getElementById('scrub');
+  scrub.max = S.DURATION;
+  const timeEl = document.getElementById('time');
+  const playBtn = document.getElementById('play');
+  let t = 0, playing = true, last = null, speed = 1;
+  const HOLD = 800; // pausa no fim antes de repetir
+
+  function render(ms) {
+    t = ms;
+    const clamped = Math.min(ms, S.DURATION);
+    devices.forEach(d => {
+      d.el.innerHTML = S.frameSVG(clamped, d.W, d.H).svg.replace('<svg ', '<svg style="width:100%;height:100%" ');
+    });
+    if (anim.isLoaded) anim.goToAndStop(Math.min(clamped, S.DURATION - 1), false);
+    scrub.value = clamped;
+    const frame = Math.round(clamped / 1000 * S.FPS);
+    timeEl.textContent = `${Math.round(clamped)} ms · frame ${String(frame).padStart(2, '0')}`;
+  }
+  window.__render = (ms) => { playing = false; playBtn.textContent = 'Tocar'; render(ms); };
+
+  function tick(now) {
+    if (playing) {
+      if (last !== null) {
+        let next = t + (now - last) * speed;
+        if (next > S.DURATION + HOLD) next = 0;
+        render(next);
+      }
+      last = now;
+    } else last = null;
+    requestAnimationFrame(tick);
+  }
+  playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? 'Pausar' : 'Tocar'; };
+  document.getElementById('replay').onclick = () => { render(0); playing = true; playBtn.textContent = 'Pausar'; };
+  document.getElementById('speed').onchange = (e) => { speed = +e.target.value; };
+  scrub.oninput = () => { playing = false; playBtn.textContent = 'Tocar'; render(+scrub.value); };
+  render(0);
+  requestAnimationFrame(tick);
+</script>
+</body>
+</html>
