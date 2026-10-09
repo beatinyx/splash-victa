@@ -62,7 +62,18 @@ layers.push(layer(CAM, 3, 'câmera', {
   }),
 }));
 
-let ind = 2;
+// Giro do v da marca: gira em torno do centro do v, as duas hastes são filhas dele
+const GIRO = 2;
+layers.push(layer(GIRO, 3, 'v · giro', {
+  parent: CAM,
+  ks: ks({
+    a: stat([...S.V_PIVOT, 0]),
+    p: stat([...S.V_PIVOT, 0]),
+    r: anim('v.rot'),
+  }),
+}));
+
+let ind = 3;
 for (const k of [...S.LETTERS].reverse()) {
   layers.push(layer(ind++, 4, S.NAMES[k], {
     parent: CAM,
@@ -71,19 +82,23 @@ for (const k of [...S.LETTERS].reverse()) {
   }));
 }
 
+// Contorno de uma haste de um dos v da assinatura, desenhado pelo trim
+const outline = (key, k, opacity) => ({
+  ty: 'gr', nm: `${S.STEMS[k]} · contorno`, it: [
+    shape(k),
+    { ty: 'tm', nm: 'trim', s: stat(0), e: anim(`${key}.${k}.trim`, (v) => v * 100), o: stat(0), m: 1 },
+    { ty: 'st', nm: 'traço', c: stat(rgba(S.COLORS.mark)), o: opacity, w: stat(S.STROKE_W), lc: 2, lj: 2, ml: 4, bm: 0 },
+    transformGroup(),
+  ],
+});
+
+// v da marca: contorno, depois preenchimento; gira com o null "v · giro"
 for (const k of ['vLong', 'vShort']) {
   layers.push(layer(ind++, 4, S.NAMES[k], {
-    parent: CAM,
+    parent: GIRO,
     ks: ks(),
     shapes: [
-      {
-        ty: 'gr', nm: 'contorno', it: [
-          shape(k),
-          { ty: 'tm', nm: 'trim', s: stat(0), e: anim(`${k}.trim`, (v) => v * 100), o: stat(0), m: 1 },
-          { ty: 'st', nm: 'traço', c: stat(rgba(S.COLORS.mark)), o: anim('v.stroke', (v) => v * 100), w: stat(S.STROKE_W), lc: 2, lj: 2, ml: 4, bm: 0 },
-          transformGroup(),
-        ],
-      },
+      outline('v', k, anim('v.stroke', (v) => v * 100)),
       {
         ty: 'gr', nm: 'preenchimento', it: [
           shape(k),
@@ -95,8 +110,24 @@ for (const k of ['vLong', 'vShort']) {
   }));
 }
 
+// v de cima e v de baixo: só contorno, posicionados como no ícone, somem com a entrada do logotipo
+for (const p of S.ICON_VS.filter((p) => p.key !== 'v')) {
+  layers.push(layer(ind++, 4, p.name, {
+    parent: CAM,
+    ks: ks({
+      a: stat([...S.V_PIVOT, 0]),
+      p: stat([S.V_PIVOT[0] + p.off[0], S.V_PIVOT[1] + p.off[1], 0]),
+      r: stat(p.rot),
+      o: anim('outlines.o', (v) => v * 100),
+    }),
+    shapes: ['vLong', 'vShort'].map((k) => outline(p.key, k, stat(100))),
+  }));
+}
+
+// Anel: sai do centro do v da marca, em unidades do logotipo (filho da câmera)
 layers.push(layer(ind++, 4, 'anel', {
-  ks: ks({ p: stat([C, C, 0]) }),
+  parent: CAM,
+  ks: ks({ p: stat([...S.V_PIVOT, 0]) }),
   shapes: [{
     ty: 'gr', nm: 'anel', it: [
       { ty: 'el', nm: 'círculo', p: stat([0, 0]), s: anim('ring.r', (v) => [v * 2, v * 2]), d: 1 },

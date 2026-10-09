@@ -21,13 +21,26 @@
     a: 'M227.698 72.468V43.2405C226.311 43.4559 225.163 44.2498 224.253 45.6234C223.924 46.0866 211.28 76.2235 210.469 78.0198H196.49C197.959 74.8008 204.492 59.286 209.053 48.7197C210.971 44.2775 212.528 40.1575 213.234 39.1278C214.21 37.5396 215.347 36.6298 216.535 35.6397C219.378 33.2711 223.808 32.8484 228.419 32.8058C232.537 32.7676 236.819 33.0006 239.922 32.9354V78.0198H227.698V74.8357Z',
   };
   const NAMES = { vLong: 'v · haste longa', vShort: 'v · haste curta', i: 'i', c: 'c', t: 't', a: 'a' };
+  const STEMS = { vLong: 'haste longa', vShort: 'haste curta' };
   const V_PARTS = ['vShort', 'vLong'];
   const LETTERS = ['i', 'c', 't', 'a'];
 
   const DURATION = 2800; // ms
   const FPS = 30;        // frames exportados para o Figma
   const STAGE = 400;     // lado do quadro do Lottie (pt), centralizado na tela
-  const STROKE_W = 1.2;  // espessura do contorno em unidades do logotipo (~2 pt no tamanho do isotipo)
+  const STROKE_W = 2.25; // espessura do contorno em unidades do logotipo (= traço de 17 px do ícone de 1024)
+  const V_PIVOT = [68.35, 55.46]; // centro do v, eixo dos giros
+
+  // Assinatura do isotipo (ícone do app): três v com as hastes do logotipo.
+  // `off` desloca o centro em relação ao v da marca, `rot` gira em torno do centro (graus).
+  // Só o v da marca (`v`) preenche e desvira; os outros dois ficam em contorno e somem com a entrada do logotipo.
+  // `delay` atrasa o desenho do contorno.
+  const ICON_VS = [
+    { key: 'vTop', name: 'v de cima', off: [34.9, -24.85], rot: 0, delay: 100 },
+    { key: 'vBottom', name: 'v de baixo', off: [34.9, 29.26], rot: 180, delay: 200 },
+    { key: 'v', name: 'v', off: [0, 0], delay: 0 },
+  ];
+  const ICON_CENTER = [88.32, 57.66]; // centro da assinatura (os três v), âncora inicial da câmera
 
   // Curvas cúbicas [x1, y1, x2, y2] — as mesmas viram o easing dos keyframes do Lottie
   const EASE = {
@@ -39,20 +52,26 @@
 
   // Keyframes: [tempo ms, valor, curva até o próximo keyframe]
   const TRACKS = {
-    // 1 · contorno: as duas hastes são desenhadas como traço
-    'vLong.trim': [[150, 0, EASE.inOut], [850, 1]],
-    'vShort.trim': [[300, 0, EASE.inOut], [950, 1]],
-    // 2 · preenchimento entra e o traço sai
+    // 2 · só o v da marca preenche; o traço dele sai
     'v.fill': [[900, 0, EASE.out], [1200, 1]],
     'v.stroke': [[1100, 1, EASE.linear], [1300, 0]],
-    // 3 · pulso de escala + anel neon
+    // 3 · pulso de escala + anel neon saindo do v da marca (raio e traço em unidades do logotipo)
     'cam.scale': [[1150, 1.76, EASE.inOutSine], [1300, 1.883, EASE.inOutSine], [1450, 1.76, EASE.inOut], [2050, 0.9]],
-    'ring.r': [[1150, 44, EASE.out], [1750, 190]],
-    'ring.w': [[1150, 6, EASE.out], [1750, 1]],
+    'ring.r': [[1150, 25, EASE.out], [1750, 92]], // 92: maior raio que ainda cabe no quadro do Lottie
+    'ring.w': [[1150, 3.4, EASE.out], [1750, 0.75]],
     'ring.o': [[1100, 0, EASE.linear], [1150, 0.9, EASE.linear], [1750, 0]],
-    // 4 · câmera: do isotipo (80 pt de altura) ao logotipo (180 pt de largura)
-    'cam.anchor': [[1450, [68.35, 55.46], EASE.inOut], [2050, [140.26, 55.48]]],
+    // 4 · câmera: da assinatura do ícone ao logotipo (180 pt de largura)
+    'cam.anchor': [[1450, ICON_CENTER, EASE.inOut], [2050, [140.26, 55.48]]],
+    // o v da marca começa virado como no ícone (−90°, apontando para a direita) e desvira com a entrada do logotipo;
+    // os dois v em contorno somem ao mesmo tempo
+    'v.rot': [[1450, -90, EASE.inOut], [1850, 0]],
+    'outlines.o': [[1450, 1, EASE.out], [1650, 0]],
   };
+  // 1 · contorno: os três v são desenhados como traço, haste longa primeiro
+  ICON_VS.forEach(({ key, delay }) => {
+    TRACKS[`${key}.vLong.trim`] = [[150 + delay, 0, EASE.inOut], [850 + delay, 1]];
+    TRACKS[`${key}.vShort.trim`] = [[300 + delay, 0, EASE.inOut], [950 + delay, 1]];
+  });
   // 5 · letras "icta" saem de trás do v, uma a cada 80 ms
   LETTERS.forEach((k, n) => {
     const s = 1600 + n * 80;
@@ -178,14 +197,23 @@
   // ---------- estado e SVG de cada frame ----------
   function frameState(t) {
     const [ax, ay] = value('cam.anchor', t);
-    const v = {};
-    for (const k of V_PARTS) v[k] = { trim: value(`${k}.trim`, t), stroke: value('v.stroke', t), fill: value('v.fill', t) };
+    const vs = {};
+    for (const p of ICON_VS) {
+      const main = p.key === 'v';
+      vs[p.key] = {
+        rot: main ? value('v.rot', t) : p.rot,
+        o: main ? 1 : value('outlines.o', t),
+        fill: main ? value('v.fill', t) : 0,
+        stroke: main ? value('v.stroke', t) : 1,
+        trim: { vShort: value(`${p.key}.vShort.trim`, t), vLong: value(`${p.key}.vLong.trim`, t) },
+      };
+    }
     const letters = {};
     for (const k of LETTERS) letters[k] = { o: value(`${k}.o`, t), dx: value(`${k}.x`, t) };
     return {
       cam: { ax, ay, s: value('cam.scale', t) },
       ring: { r: value('ring.r', t), w: value('ring.w', t), o: value('ring.o', t) },
-      v,
+      vs,
       letters,
     };
   }
@@ -200,21 +228,29 @@
     const hasRing = ring.o > 0.001;
     let out = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
     out += `<rect width="${W}" height="${H}" fill="${COLORS.bg}"/>`;
-    if (hasRing) {
-      out += `<circle cx="${W / 2}" cy="${H / 2}" r="${r3(ring.r)}" fill="none" stroke="${COLORS.ring}" stroke-width="${r3(ring.w)}" opacity="${r3(ring.o)}"/>`;
-    }
     out += `<g transform="matrix(${r3(cam.s)} 0 0 ${r3(cam.s)} ${r3(tx)} ${r3(ty)})">`;
-    for (const k of V_PARTS) {
-      const L = st.v[k];
-      if (L.fill > 0.001) {
-        out += `<path d="${PATHS[k]}" fill="${COLORS.mark}" opacity="${r3(L.fill)}"/>`;
-        layers.push(NAMES[k]);
+    if (hasRing) {
+      out += `<circle cx="${V_PIVOT[0]}" cy="${V_PIVOT[1]}" r="${r3(ring.r)}" fill="none" stroke="${COLORS.ring}" stroke-width="${r3(ring.w)}" opacity="${r3(ring.o)}"/>`;
+    }
+    // opacidade vai em cada path (e não no <g>) para sobreviver à importação no Figma
+    for (const p of ICON_VS) {
+      const V = st.vs[p.key];
+      if (V.o <= 0.001) continue;
+      out += `<g transform="translate(${p.off[0]} ${p.off[1]}) rotate(${r3(V.rot)} ${V_PIVOT[0]} ${V_PIVOT[1]})">`;
+      for (const k of V_PARTS) {
+        const name = `${p.name} · ${STEMS[k]}`;
+        if (V.fill > 0.001) {
+          out += `<path d="${PATHS[k]}" fill="${COLORS.mark}" opacity="${r3(V.fill)}"/>`;
+          layers.push(name);
+        }
+        const trim = V.trim[k];
+        if (trim > 0.001 && V.stroke * V.o > 0.001) {
+          const d = trim >= 0.9999 ? PATHS[k] : trimmedD(k, trim);
+          out += `<path d="${d}" fill="none" stroke="${COLORS.mark}" stroke-width="${STROKE_W}" stroke-linecap="round" stroke-linejoin="round" opacity="${r3(V.stroke * V.o)}"/>`;
+          layers.push(`${name} · contorno`);
+        }
       }
-      if (L.trim > 0.001 && L.stroke > 0.001) {
-        const d = L.trim >= 0.9999 ? PATHS[k] : trimmedD(k, L.trim);
-        out += `<path d="${d}" fill="none" stroke="${COLORS.mark}" stroke-width="${STROKE_W}" stroke-linecap="round" stroke-linejoin="round" opacity="${r3(L.stroke)}"/>`;
-        layers.push(`${NAMES[k]} · contorno`);
-      }
+      out += '</g>';
     }
     for (const k of LETTERS) {
       const L = st.letters[k];
@@ -226,7 +262,7 @@
     return { svg: out, layers, hasRing };
   }
 
-  const api = { COLORS, PATHS, NAMES, V_PARTS, LETTERS, DURATION, FPS, STAGE, STROKE_W, EASE, TRACKS, value, parsePath, frameState, frameSVG };
+  const api = { COLORS, PATHS, NAMES, V_PARTS, LETTERS, DURATION, FPS, STAGE, STROKE_W, V_PIVOT, ICON_VS, ICON_CENTER, STEMS, EASE, TRACKS, value, parsePath, frameState, frameSVG };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.VictaSplash = api;
 })(typeof window !== 'undefined' ? window : globalThis);
